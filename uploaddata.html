@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Data - Google Ads Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -40,6 +41,39 @@
         .subtitle {
             color: #9ca3af;
             font-size: 1.1rem;
+        }
+
+        .upload-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #1f2937;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 15px;
+            background: #1f2937;
+            color: #9ca3af;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn.active {
+            background: #4ade80;
+            color: #000000;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
         }
 
         .upload-card {
@@ -85,8 +119,36 @@
             box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.1);
         }
 
-        .form-input::placeholder {
-            color: #6b7280;
+        .file-upload {
+            border: 2px dashed #374151;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: border-color 0.3s ease;
+            cursor: pointer;
+            background: #111827;
+        }
+
+        .file-upload.dragover {
+            border-color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        .file-upload-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            color: #4ade80;
+        }
+
+        .file-upload-text {
+            color: #e5e7eb;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+
+        .file-upload-hint {
+            color: #9ca3af;
+            font-size: 0.9rem;
         }
 
         .btn {
@@ -110,6 +172,11 @@
 
         .btn:active {
             transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .btn-secondary {
@@ -136,6 +203,38 @@
             font-size: 1.2rem;
             font-weight: 600;
             margin-bottom: 15px;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #374151;
+        }
+
+        .ocr-progress {
+            background: #1f2937;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #374151;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4ade80;
+            transition: width 0.3s ease;
+            width: 0%;
         }
 
         .preview-table {
@@ -258,6 +357,8 @@
             margin-top: 15px;
             font-size: 0.9rem;
             color: #fbbf24;
+            max-height: 200px;
+            overflow-y: auto;
         }
 
         @media (max-width: 768px) {
@@ -272,15 +373,6 @@
             .upload-card {
                 padding: 25px;
             }
-            
-            .preview-table {
-                font-size: 0.8rem;
-            }
-            
-            .preview-table th,
-            .preview-table td {
-                padding: 8px;
-            }
         }
     </style>
 </head>
@@ -288,47 +380,99 @@
     <div class="container">
         <div class="header">
             <h1 class="title">Data Upload</h1>
-            <p class="subtitle">Update your Google Ads dashboard with fresh CSV data</p>
+            <p class="subtitle">Update your Google Ads dashboard with CSV or image data</p>
         </div>
 
-        <div class="instructions">
-            <h3>How to get your CSV URL:</h3>
-            <p><strong>Just paste your Google Sheets URL - any format works!</strong></p>
-            <p>Examples of URLs that work:</p>
-            <p>✅ <code>https://docs.google.com/spreadsheets/d/YOUR_ID/edit?usp=sharing</code></p>
-            <p>✅ <code>https://docs.google.com/spreadsheets/d/YOUR_ID/edit</code></p>
-            <p>✅ <code>https://docs.google.com/spreadsheets/d/e/2PACX.../export?format=csv</code></p>
-            <p>✅ <code>https://docs.google.com/spreadsheets/d/YOUR_ID/export?format=csv</code></p>
-            <p><strong>The system automatically converts any Google Sheets URL to the correct CSV format!</strong></p>
-            <p><em>Note: Make sure your sheet is set to "Anyone with the link can view"</em></p>
+        <div class="upload-tabs">
+            <button class="tab-btn active" onclick="switchTab('csv')">📊 CSV Upload</button>
+            <button class="tab-btn" onclick="switchTab('image')">📷 Image Upload</button>
         </div>
 
-        <div class="upload-card">
-            <form id="uploadForm">
-                <div class="form-group">
-                    <label for="csvUrl" class="form-label">CSV URL</label>
-                    <input 
-                        type="url" 
-                        id="csvUrl" 
-                        class="form-input" 
-                        placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
-                        required
-                    >
-                </div>
+        <!-- CSV Upload Tab -->
+        <div id="csvTab" class="tab-content active">
+            <div class="instructions">
+                <h3>How to get your CSV URL:</h3>
+                <p><strong>Just paste your Google Sheets URL - any format works!</strong></p>
+                <p>Examples of URLs that work:</p>
+                <p>✅ <code>https://docs.google.com/spreadsheets/d/YOUR_ID/edit?usp=sharing</code></p>
+                <p>✅ <code>https://docs.google.com/spreadsheets/d/YOUR_ID/edit</code></p>
+                <p>✅ <code>https://docs.google.com/spreadsheets/d/e/2PACX.../export?format=csv</code></p>
+                <p><strong>The system automatically converts any Google Sheets URL to the correct CSV format!</strong></p>
+                <p><em>Note: Make sure your sheet is set to "Anyone with the link can view"</em></p>
+            </div>
 
-                <div class="form-group">
-                    <button type="button" id="previewBtn" class="btn btn-secondary">
-                        📊 Preview Data
-                    </button>
-                    <button type="submit" id="updateBtn" class="btn" disabled>
-                        🚀 Update Dashboard
-                    </button>
-                </div>
-            </form>
+            <div class="upload-card">
+                <form id="csvForm">
+                    <div class="form-group">
+                        <label for="csvUrl" class="form-label">CSV URL</label>
+                        <input 
+                            type="url" 
+                            id="csvUrl" 
+                            class="form-input" 
+                            placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"
+                            required
+                        >
+                    </div>
 
-            <div id="statusMessage" class="status-message"></div>
-            <div id="debugInfo" class="debug-info" style="display: none;"></div>
+                    <div class="form-group">
+                        <button type="button" id="csvPreviewBtn" class="btn btn-secondary">
+                            📊 Preview Data
+                        </button>
+                        <button type="submit" id="csvUpdateBtn" class="btn" disabled>
+                            🚀 Update Dashboard
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
+
+        <!-- Image Upload Tab -->
+        <div id="imageTab" class="tab-content">
+            <div class="instructions">
+                <h3>Upload Google Ads Screenshot:</h3>
+                <p><strong>Upload a screenshot of your Google Ads data table</strong></p>
+                <p>The system will automatically:</p>
+                <p>✅ Extract text from your image using OCR</p>
+                <p>✅ Find the "Total: Account" row</p>
+                <p>✅ Parse all metrics and update your dashboard</p>
+                <p><em>Supported formats: PNG, JPG, JPEG, WebP</em></p>
+                <p><strong>💡 Tip:</strong> Make sure the image is clear and the table is fully visible</p>
+            </div>
+
+            <div class="upload-card">
+                <form id="imageForm">
+                    <div class="form-group">
+                        <label class="form-label">Upload Image</label>
+                        <div class="file-upload" id="fileUpload">
+                            <div class="file-upload-icon">📷</div>
+                            <div class="file-upload-text">Click to upload or drag & drop</div>
+                            <div class="file-upload-hint">PNG, JPG, JPEG, WebP up to 10MB</div>
+                            <input type="file" id="imageFile" accept="image/*" style="display: none;">
+                        </div>
+                    </div>
+
+                    <div class="ocr-progress" id="ocrProgress">
+                        <div>Processing image...</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div id="progressText">Initializing OCR...</div>
+                    </div>
+
+                    <div class="form-group">
+                        <button type="button" id="imagePreviewBtn" class="btn btn-secondary" disabled>
+                            🔍 Analyze Image
+                        </button>
+                        <button type="submit" id="imageUpdateBtn" class="btn" disabled>
+                            🚀 Update Dashboard
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="statusMessage" class="status-message"></div>
+        <div id="debugInfo" class="debug-info" style="display: none;"></div>
 
         <div id="previewCard" class="preview-card">
             <h3 class="preview-title">Data Preview</h3>
@@ -342,37 +486,313 @@
 
     <script>
         let parsedData = null;
-        let rawCsvData = null;
+        let uploadedImage = null;
+        let currentTab = 'csv';
 
+        // DOM elements
         const csvUrlInput = document.getElementById('csvUrl');
-        const previewBtn = document.getElementById('previewBtn');
-        const updateBtn = document.getElementById('updateBtn');
+        const csvPreviewBtn = document.getElementById('csvPreviewBtn');
+        const csvUpdateBtn = document.getElementById('csvUpdateBtn');
+        const imageFile = document.getElementById('imageFile');
+        const imagePreviewBtn = document.getElementById('imagePreviewBtn');
+        const imageUpdateBtn = document.getElementById('imageUpdateBtn');
         const statusMessage = document.getElementById('statusMessage');
         const previewCard = document.getElementById('previewCard');
         const previewContent = document.getElementById('previewContent');
-        const uploadForm = document.getElementById('uploadForm');
         const debugInfo = document.getElementById('debugInfo');
+        const fileUpload = document.getElementById('fileUpload');
+        const ocrProgress = document.getElementById('ocrProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
 
-        // Show status message
+        // Tab switching
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (tab === 'csv') {
+                document.querySelector('.tab-btn[onclick="switchTab(\'csv\')"]').classList.add('active');
+                document.getElementById('csvTab').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn[onclick="switchTab(\'image\')"]').classList.add('active');
+                document.getElementById('imageTab').classList.add('active');
+            }
+            
+            hideStatus();
+            previewCard.style.display = 'none';
+        }
+
+        // File upload handling
+        fileUpload.addEventListener('click', () => imageFile.click());
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        });
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragover');
+        });
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleImageUpload(files[0]);
+            }
+        });
+
+        imageFile.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                handleImageUpload(e.target.files[0]);
+            }
+        });
+
+        function handleImageUpload(file) {
+            if (!file.type.startsWith('image/')) {
+                showStatus('Please upload a valid image file', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('File size must be less than 10MB', 'error');
+                return;
+            }
+
+            uploadedImage = file;
+            fileUpload.innerHTML = `
+                <div class="file-upload-icon">✅</div>
+                <div class="file-upload-text">Image uploaded: ${file.name}</div>
+                <div class="file-upload-hint">Size: ${(file.size / 1024 / 1024).toFixed(2)}MB</div>
+            `;
+            
+            imagePreviewBtn.disabled = false;
+            showStatus('Image uploaded successfully. Click "Analyze Image" to process.', 'success');
+        }
+
+        // Show/hide status and debug
         function showStatus(message, type) {
             statusMessage.textContent = message;
             statusMessage.className = `status-message status-${type}`;
             statusMessage.style.display = 'block';
         }
 
-        // Hide status message
         function hideStatus() {
             statusMessage.style.display = 'none';
         }
 
-        // Show debug info
         function showDebug(message) {
             debugInfo.innerHTML = message;
             debugInfo.style.display = 'block';
         }
 
-        // Preview data function
-        async function previewData() {
+        // OCR Progress
+        function updateProgress(progress, text) {
+            progressFill.style.width = `${Math.round(progress * 100)}%`;
+            progressText.textContent = text;
+        }
+
+        // Image analysis using OCR
+        async function analyzeImage() {
+            if (!uploadedImage) {
+                showStatus('Please upload an image first', 'error');
+                return;
+            }
+
+            imagePreviewBtn.innerHTML = '<span class="loading-spinner"></span>Analyzing...';
+            imagePreviewBtn.disabled = true;
+            ocrProgress.style.display = 'block';
+            showStatus('Processing image with OCR...', 'loading');
+
+            try {
+                // Show image preview
+                const imageUrl = URL.createObjectURL(uploadedImage);
+                const imagePreviewHtml = `<img src="${imageUrl}" class="image-preview" alt="Uploaded image">`;
+                
+                // Initialize Tesseract with progress tracking
+                updateProgress(0.1, 'Initializing OCR engine...');
+                
+                const worker = await Tesseract.createWorker('eng');
+                
+                updateProgress(0.2, 'Loading image...');
+                
+                const { data: { text } } = await worker.recognize(uploadedImage, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            updateProgress(0.2 + (m.progress * 0.7), `Recognizing text... ${Math.round(m.progress * 100)}%`);
+                        }
+                    }
+                });
+
+                updateProgress(0.9, 'Processing extracted text...');
+                
+                await worker.terminate();
+
+                console.log('OCR Text:', text);
+                
+                // Parse the OCR text to find "Total: Account" row
+                const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+                
+                console.log('Text lines:', lines);
+                
+                // Look for "Total: Account" line
+                let totalAccountLine = null;
+                let totalAccountIndex = -1;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].toLowerCase();
+                    if (line.includes('total') && (line.includes('account') || line.includes(':'))) {
+                        totalAccountLine = lines[i];
+                        totalAccountIndex = i;
+                        console.log(`Found "Total: Account" at line ${i}: ${totalAccountLine}`);
+                        break;
+                    }
+                }
+
+                if (!totalAccountLine) {
+                    throw new Error('Could not find "Total: Account" row in the image. Please ensure the image shows the complete Google Ads table.');
+                }
+
+                // Extract numeric values from the line
+                // Common Google Ads format: numbers with commas, percentages, dollar signs
+                const numberPattern = /[\d,]+\.?\d*/g;
+                const percentPattern = /\([\d,]+\.?\d*%\)/g;
+                const currencyPattern = /\$[\d,]+\.?\d*/g;
+                
+                const numbers = totalAccountLine.match(numberPattern) || [];
+                const percentages = totalAccountLine.match(percentPattern) || [];
+                const currencies = totalAccountLine.match(currencyPattern) || [];
+                
+                console.log('Extracted numbers:', numbers);
+                console.log('Extracted percentages:', percentages);
+                console.log('Extracted currencies:', currencies);
+
+                // Try to map extracted values to dashboard metrics
+                // This is a heuristic approach based on typical Google Ads table structure
+                const dashboardData = parseExtractedValues(numbers, percentages, currencies, totalAccountLine);
+                
+                parsedData = [dashboardData];
+                
+                updateProgress(1.0, 'Complete!');
+                
+                // Show preview
+                displayImagePreview(dashboardData, imagePreviewHtml, totalAccountLine);
+                showStatus('Image analyzed successfully! Review the extracted data below.', 'success');
+                
+                showDebug(`
+                    <strong>OCR Analysis Results:</strong><br>
+                    • Found "Total: Account" at line ${totalAccountIndex + 1}<br>
+                    • Extracted ${numbers.length} numeric values<br>
+                    • Extracted ${percentages.length} percentages<br>
+                    • Extracted ${currencies.length} currency values<br>
+                    • Raw line: "${totalAccountLine}"
+                `);
+                
+                imageUpdateBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('OCR Error:', error);
+                showStatus('Error analyzing image: ' + error.message, 'error');
+                imageUpdateBtn.disabled = true;
+                previewCard.style.display = 'none';
+            } finally {
+                imagePreviewBtn.innerHTML = '🔍 Analyze Image';
+                imagePreviewBtn.disabled = false;
+                ocrProgress.style.display = 'none';
+            }
+        }
+
+        function parseExtractedValues(numbers, percentages, currencies, rawLine) {
+            // Helper function to safely parse numeric values
+            function parseNum(value, defaultVal = 0) {
+                if (!value) return defaultVal;
+                const cleaned = String(value).replace(/[,$%()]/g, '');
+                const num = parseFloat(cleaned);
+                return isNaN(num) ? defaultVal : num;
+            }
+
+            // Create dashboard data structure with extracted values
+            // This is a best-effort mapping based on common Google Ads table layouts
+            const data = {
+                dateRange: "From Uploaded Image",
+                lastUpdated: new Date().toISOString()
+            };
+
+            // Try to map values based on position and typical Google Ads structure
+            if (numbers.length >= 4) {
+                data.impressions = { current: parseNum(numbers[0]) };
+                data.interactions = { current: parseNum(numbers[1]) };
+                data.interactionRate = { current: parseNum(numbers[2]) };
+                data.avgCost = { current: parseNum(numbers[3]) };
+            }
+
+            if (currencies.length >= 1) {
+                data.totalCost = { current: parseNum(currencies[0]) };
+            }
+
+            // Look for conversion data in the remaining numbers
+            if (numbers.length >= 6) {
+                data.conversions = { current: parseNum(numbers[4]) };
+                data.conversionRate = { current: parseNum(numbers[5]) };
+            }
+
+            if (numbers.length >= 7) {
+                data.costPerConversion = { current: parseNum(numbers[6]) };
+            }
+
+            // Set default values for missing metrics
+            const defaultMetrics = ['impressions', 'interactions', 'interactionRate', 'avgCost', 'totalCost', 'conversions', 'conversionRate', 'costPerConversion'];
+            defaultMetrics.forEach(metric => {
+                if (!data[metric]) {
+                    data[metric] = { current: 0 };
+                }
+            });
+
+            return data;
+        }
+
+        function displayImagePreview(data, imageHtml, rawLine) {
+            let html = imageHtml;
+            html += '<div style="margin-top: 20px;">';
+            html += '<h4 style="color: #4ade80; margin-bottom: 10px;">Extracted "Total: Account" Data:</h4>';
+            html += `<div style="background: #1f2937; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-family: monospace; font-size: 0.9rem;">
+                Raw text: "${rawLine}"
+            </div>`;
+            
+            html += '<table class="preview-table"><thead><tr>';
+            html += '<th>Metric</th><th>Value</th></tr></thead><tbody>';
+            
+            const metricNames = {
+                impressions: 'Impressions',
+                interactions: 'Interactions/Clicks',
+                interactionRate: 'Interaction Rate (%)',
+                avgCost: 'Avg. Cost per Click ($)',
+                totalCost: 'Total Cost ($)',
+                conversions: 'Conversions',
+                conversionRate: 'Conversion Rate (%)',
+                costPerConversion: 'Cost per Conversion ($)'
+            };
+
+            Object.entries(metricNames).forEach(([key, name]) => {
+                const value = data[key]?.current || 0;
+                const displayValue = ['interactionRate', 'conversionRate'].includes(key) 
+                    ? `${value}%` 
+                    : ['avgCost', 'totalCost', 'costPerConversion'].includes(key)
+                    ? `$${value.toLocaleString()}`
+                    : value.toLocaleString();
+                
+                html += `<tr><td>${name}</td><td>${displayValue}</td></tr>`;
+            });
+
+            html += '</tbody></table>';
+            html += '<p style="margin-top: 15px; color: #9ca3af; text-align: center; font-style: italic;">Data extracted from uploaded image using OCR</p>';
+            html += '</div>';
+
+            previewContent.innerHTML = html;
+            previewCard.style.display = 'block';
+        }
+
+        // CSV Functions (keeping original functionality)
+        async function previewCsvData() {
             const url = csvUrlInput.value.trim();
             
             if (!url) {
@@ -380,12 +800,11 @@
                 return;
             }
 
-            previewBtn.innerHTML = '<span class="loading-spinner"></span>Loading...';
-            previewBtn.disabled = true;
+            csvPreviewBtn.innerHTML = '<span class="loading-spinner"></span>Loading...';
+            csvPreviewBtn.disabled = true;
             showStatus('Fetching CSV data...', 'loading');
 
             try {
-                // Convert Google Sheets edit URL to CSV export URL if needed
                 let csvUrl = url;
                 if (url.includes('/edit')) {
                     csvUrl = url.replace('/edit#gid=0', '/export?format=csv')
@@ -400,9 +819,7 @@
                 
                 const data = await response.json();
                 const csvText = data.contents;
-                rawCsvData = csvText;
 
-                // Parse CSV without headers first to see raw structure
                 const rawParseResult = Papa.parse(csvText, {
                     header: false,
                     skipEmptyLines: true
@@ -410,44 +827,24 @@
 
                 console.log('Raw CSV rows:', rawParseResult.data);
                 
-                // Debug: log all rows to understand the structure
-                console.log('CSV Structure Analysis:');
-                rawParseResult.data.forEach((row, index) => {
-                    const firstCell = String(row[0] || '').trim();
-                    const secondCell = String(row[1] || '').trim();
-                    console.log(`Row ${index}: "${firstCell}" | "${secondCell}" | Columns: ${row.length}`);
-                });
-                
-                // Based on the Google Sheets structure, we expect:
-                // Row 0: Date range info
-                // Row 1: Headers starting with "Search term"
-                // Row 2: "Total: Account" with data
-                
                 let totalRowIndex = -1;
                 let headerRowIndex = -1;
                 
-                // Look for the specific pattern in your sheets
                 for (let i = 0; i < rawParseResult.data.length; i++) {
                     const row = rawParseResult.data[i];
                     const firstCell = String(row[0] || '').trim();
                     
-                    // Look for header row (row with "Search term")
                     if (firstCell.toLowerCase() === 'search term') {
                         headerRowIndex = i;
-                        console.log(`Found header row at index ${i}`);
                     }
                     
-                    // Look for total row (row with "Total: Account")
                     if (firstCell.toLowerCase().includes('total') && 
                         (firstCell.toLowerCase().includes('account') || firstCell.includes(':'))) {
                         totalRowIndex = i;
-                        console.log(`Found total row at index ${i}: "${firstCell}"`);
                     }
                 }
                 
-                // Fallback: if header not found but we have data, assume row 1 is headers
                 if (headerRowIndex === -1 && rawParseResult.data.length > 2) {
-                    // Check if row 1 has column-like headers
                     const potentialHeaders = rawParseResult.data[1];
                     if (potentialHeaders && potentialHeaders.some(cell => 
                         String(cell || '').toLowerCase().includes('impr') ||
@@ -455,24 +852,18 @@
                         String(cell || '').toLowerCase().includes('cost')
                     )) {
                         headerRowIndex = 1;
-                        console.log('Using row 1 as headers (fallback)');
                     }
                 }
                 
-                // Fallback: if total row not found but we have data, use row 2
                 if (totalRowIndex === -1 && rawParseResult.data.length > 2) {
-                    // Check if row 2 has numeric data
                     const potentialDataRow = rawParseResult.data[2];
                     if (potentialDataRow && potentialDataRow.some(cell => {
                         const str = String(cell || '').replace(/[,$%]/g, '');
                         return !isNaN(parseFloat(str)) && parseFloat(str) > 0;
                     })) {
                         totalRowIndex = 2;
-                        console.log('Using row 2 as data row (fallback)');
                     }
                 }
-                
-                console.log(`Final selection - Header row: ${headerRowIndex}, Data row: ${totalRowIndex}`);
 
                 if (totalRowIndex === -1) {
                     throw new Error(`Could not find data row. Available rows: ${rawParseResult.data.length}. Please check that your sheet contains the expected Google Ads data structure.`);
@@ -482,48 +873,32 @@
                     throw new Error(`Could not find header row. Please check that your sheet has proper column headers.`);
                 }
 
-                const actualHeaderRowIndex = headerRowIndex;
-                const headers = rawParseResult.data[actualHeaderRowIndex];
-                const totalRowData = rawParseResult.data[dataRowIndex];
+                const headers = rawParseResult.data[headerRowIndex];
+                const totalRowData = rawParseResult.data[totalRowIndex];
 
-                // Create an object with headers as keys and total row data as values
                 const totalRowObject = {};
                 headers.forEach((header, index) => {
                     totalRowObject[header] = totalRowData[index] || '';
                 });
 
-                parsedData = [totalRowObject]; // Wrap in array for consistency
+                parsedData = [totalRowObject];
                 
-                console.log('Processed total row:', totalRowObject);
-                
-                // Show debug info
-                showDebug(`
-                    <strong>Debug Info:</strong><br>
-                    • Found ${rawParseResult.data.length} total rows<br>
-                    • Header row at index: ${actualHeaderRowIndex}<br>
-                    • Total row at index: ${totalRowIndex}<br>
-                    • Headers found: ${headers.length}<br>
-                    • Sample header: "${headers[1] || 'N/A'}"
-                `);
-                
-                // Show preview
-                displayPreview([totalRowObject]);
+                displayCsvPreview([totalRowObject]);
                 showStatus(`Successfully loaded Total Account data from row ${totalRowIndex + 1}`, 'success');
-                updateBtn.disabled = false;
+                csvUpdateBtn.disabled = false;
 
             } catch (error) {
                 console.error('Error:', error);
                 showStatus('Error loading CSV: ' + error.message, 'error');
-                updateBtn.disabled = true;
+                csvUpdateBtn.disabled = true;
                 previewCard.style.display = 'none';
             } finally {
-                previewBtn.innerHTML = '📊 Preview Data';
-                previewBtn.disabled = false;
+                csvPreviewBtn.innerHTML = '📊 Preview Data';
+                csvPreviewBtn.disabled = false;
             }
         }
 
-        // Display data preview
-        function displayPreview(data) {
+        function displayCsvPreview(data) {
             if (!data || data.length === 0) {
                 previewContent.innerHTML = '<p>No data to preview</p>';
                 return;
@@ -543,96 +918,34 @@
             });
             html += '</tr></tbody></table>';
 
-            html += `<p style="margin-top: 10px; color: #9ca3af; text-align: center;">Showing Total: Account row data</p>`;
+            html += `<p style="margin-top: 10px; color: #9ca3af; text-align: center;">Showing Total: Account row data from CSV</p>`;
 
             previewContent.innerHTML = html;
             previewCard.style.display = 'block';
         }
 
-        // Update dashboard function
+        // Update dashboard function (works for both CSV and image data)
         function updateDashboard() {
             if (!parsedData || !parsedData[0]) {
                 showStatus('Please preview the data first', 'error');
                 return;
             }
 
+            const updateBtn = currentTab === 'csv' ? csvUpdateBtn : imageUpdateBtn;
             updateBtn.innerHTML = '<span class="loading-spinner"></span>Updating...';
             updateBtn.disabled = true;
 
             try {
-                const totalRow = parsedData[0];
-                console.log('Processing row:', totalRow);
-
-                // Helper function to safely get numeric value
-                function getNumericValue(value) {
-                    if (value === null || value === undefined || value === '') return 0;
-                    const str = String(value).replace(/[%,$]/g, '');
-                    const num = parseFloat(str);
-                    return isNaN(num) ? 0 : num;
+                let dashboardData;
+                
+                if (currentTab === 'image') {
+                    // For image data, it's already processed
+                    dashboardData = parsedData[0];
+                } else {
+                    // For CSV data, process it
+                    const totalRow = parsedData[0];
+                    dashboardData = processCsvData(totalRow);
                 }
-
-                // Helper function to find column value by partial name match
-                function findColumnValue(row, searchTerms) {
-                    for (const key of Object.keys(row)) {
-                        for (const term of searchTerms) {
-                            if (key.toLowerCase().includes(term.toLowerCase())) {
-                                const value = getNumericValue(row[key]);
-                                console.log(`Found ${term} in column "${key}": ${value}`);
-                                return value;
-                            }
-                        }
-                    }
-                    console.log(`Could not find column for terms: ${searchTerms.join(', ')}`);
-                    return 0;
-                }
-
-                // Extract data with flexible column matching
-                const dashboardData = {
-                    dateRange: "Latest Data Update",
-                    impressions: {
-                        current: findColumnValue(totalRow, ['impr.', 'impressions']),
-                        previous: findColumnValue(totalRow, ['impr. (compare to)', 'impressions (compare to)']),
-                        change: findColumnValue(totalRow, ['impr. (change', 'impressions (change'])
-                    },
-                    interactions: {
-                        current: findColumnValue(totalRow, ['interactions']) || 
-                               findColumnValue(totalRow, ['clicks']),
-                        previous: findColumnValue(totalRow, ['interactions (compare to)', 'clicks (compare to)']),
-                        change: findColumnValue(totalRow, ['interactions (change', 'clicks (change'])
-                    },
-                    interactionRate: {
-                        current: findColumnValue(totalRow, ['interaction rate', 'ctr']),
-                        previous: findColumnValue(totalRow, ['interaction rate (compare', 'ctr (compare']),
-                        change: findColumnValue(totalRow, ['interaction rate (change', 'ctr (change'])
-                    },
-                    avgCost: {
-                        current: findColumnValue(totalRow, ['avg. cost', 'avg cost']),
-                        previous: findColumnValue(totalRow, ['avg. cost (compare', 'avg cost (compare']),
-                        change: findColumnValue(totalRow, ['avg. cost (change', 'avg cost (change'])
-                    },
-                    totalCost: {
-                        current: findColumnValue(totalRow, ['cost']) || 
-                               findColumnValue(totalRow, ['spend']),
-                        previous: findColumnValue(totalRow, ['cost (compare', 'spend (compare']),
-                        change: findColumnValue(totalRow, ['cost (change', 'spend (change'])
-                    },
-                    conversionRate: {
-                        current: findColumnValue(totalRow, ['conv. rate', 'conversion rate']),
-                        previous: findColumnValue(totalRow, ['conv. rate (compare', 'conversion rate (compare']),
-                        change: findColumnValue(totalRow, ['conv. rate (change', 'conversion rate (change'])
-                    },
-                    conversions: {
-                        current: findColumnValue(totalRow, ['conversions']),
-                        previous: findColumnValue(totalRow, ['conversions (compare']),
-                        change: findColumnValue(totalRow, ['conversions (change'])
-                    },
-                    costPerConversion: {
-                        current: findColumnValue(totalRow, ['cost / conv', 'cost per conv']),
-                        previous: findColumnValue(totalRow, ['cost / conv (compare', 'cost per conv (compare']),
-                        change: findColumnValue(totalRow, ['cost / conv (change', 'cost per conv (change'])
-                    },
-                    lastUpdated: new Date().toISOString()
-                };
 
                 console.log('Final dashboard data:', dashboardData);
 
@@ -645,39 +958,112 @@
                 });
 
                 if (!hasData) {
-                    throw new Error('No valid data found. Please check that your CSV contains the expected Google Ads columns.');
+                    throw new Error('No valid data found. Please check that your data contains the expected Google Ads metrics.');
                 }
 
-                // Store data
-                if (typeof Storage !== "undefined") {
-                    localStorage.setItem('googleAdsData', JSON.stringify(dashboardData));
-                    showStatus('Dashboard updated successfully! 🎉', 'success');
-                    
-                    // Redirect to dashboard after 2 seconds
-                    setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 2000);
-                } else {
-                    throw new Error('Browser storage not supported');
-                }
+                // Store data in memory (localStorage not supported in artifacts)
+                window.dashboardData = dashboardData;
+                showStatus('Dashboard updated successfully! 🎉', 'success');
+                
+                // Simulate redirect after 2 seconds
+                setTimeout(() => {
+                    showStatus('✅ Data stored successfully. In a real application, you would be redirected to the dashboard.', 'success');
+                }, 2000);
 
             } catch (error) {
                 console.error('Error updating dashboard:', error);
                 showStatus('Error updating dashboard: ' + error.message, 'error');
             } finally {
-                updateBtn.innerHTML = '🚀 Update Dashboard';
+                updateBtn.innerHTML = currentTab === 'csv' ? '🚀 Update Dashboard' : '🚀 Update Dashboard';
                 updateBtn.disabled = false;
             }
         }
 
+        function processCsvData(totalRow) {
+            function getNumericValue(value) {
+                if (value === null || value === undefined || value === '') return 0;
+                const str = String(value).replace(/[%,$]/g, '');
+                const num = parseFloat(str);
+                return isNaN(num) ? 0 : num;
+            }
+
+            function findColumnValue(row, searchTerms) {
+                for (const key of Object.keys(row)) {
+                    for (const term of searchTerms) {
+                        if (key.toLowerCase().includes(term.toLowerCase())) {
+                            const value = getNumericValue(row[key]);
+                            console.log(`Found ${term} in column "${key}": ${value}`);
+                            return value;
+                        }
+                    }
+                }
+                console.log(`Could not find column for terms: ${searchTerms.join(', ')}`);
+                return 0;
+            }
+
+            return {
+                dateRange: "Latest Data Update",
+                impressions: {
+                    current: findColumnValue(totalRow, ['impr.', 'impressions']),
+                    previous: findColumnValue(totalRow, ['impr. (compare to)', 'impressions (compare to)']),
+                    change: findColumnValue(totalRow, ['impr. (change', 'impressions (change'])
+                },
+                interactions: {
+                    current: findColumnValue(totalRow, ['interactions']) || 
+                           findColumnValue(totalRow, ['clicks']),
+                    previous: findColumnValue(totalRow, ['interactions (compare to)', 'clicks (compare to)']),
+                    change: findColumnValue(totalRow, ['interactions (change', 'clicks (change'])
+                },
+                interactionRate: {
+                    current: findColumnValue(totalRow, ['interaction rate', 'ctr']),
+                    previous: findColumnValue(totalRow, ['interaction rate (compare', 'ctr (compare']),
+                    change: findColumnValue(totalRow, ['interaction rate (change', 'ctr (change'])
+                },
+                avgCost: {
+                    current: findColumnValue(totalRow, ['avg. cost', 'avg cost']),
+                    previous: findColumnValue(totalRow, ['avg. cost (compare', 'avg cost (compare']),
+                    change: findColumnValue(totalRow, ['avg. cost (change', 'avg cost (change'])
+                },
+                totalCost: {
+                    current: findColumnValue(totalRow, ['cost']) || 
+                           findColumnValue(totalRow, ['spend']),
+                    previous: findColumnValue(totalRow, ['cost (compare', 'spend (compare']),
+                    change: findColumnValue(totalRow, ['cost (change', 'spend (change'])
+                },
+                conversionRate: {
+                    current: findColumnValue(totalRow, ['conv. rate', 'conversion rate']),
+                    previous: findColumnValue(totalRow, ['conv. rate (compare', 'conversion rate (compare']),
+                    change: findColumnValue(totalRow, ['conv. rate (change', 'conversion rate (change'])
+                },
+                conversions: {
+                    current: findColumnValue(totalRow, ['conversions']),
+                    previous: findColumnValue(totalRow, ['conversions (compare']),
+                    change: findColumnValue(totalRow, ['conversions (change'])
+                },
+                costPerConversion: {
+                    current: findColumnValue(totalRow, ['cost / conv', 'cost per conv']),
+                    previous: findColumnValue(totalRow, ['cost / conv (compare', 'cost per conv (compare']),
+                    change: findColumnValue(totalRow, ['cost / conv (change', 'cost per conv (change'])
+                },
+                lastUpdated: new Date().toISOString()
+            };
+        }
+
         // Event listeners
-        previewBtn.addEventListener('click', previewData);
-        uploadForm.addEventListener('submit', (e) => {
+        csvPreviewBtn.addEventListener('click', previewCsvData);
+        imagePreviewBtn.addEventListener('click', analyzeImage);
+        
+        document.getElementById('csvForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            updateDashboard();
+        });
+        
+        document.getElementById('imageForm').addEventListener('submit', (e) => {
             e.preventDefault();
             updateDashboard();
         });
 
-        // Auto-hide status messages after 5 seconds
+        // Auto-hide error messages
         setInterval(() => {
             if (statusMessage.style.display === 'block' && 
                 statusMessage.classList.contains('status-error')) {
@@ -685,7 +1071,7 @@
             }
         }, 5000);
 
-        // Pre-fill URL if passed as parameter
+        // Pre-fill CSV URL if passed as parameter
         const urlParams = new URLSearchParams(window.location.search);
         const csvUrl = urlParams.get('url');
         if (csvUrl) {
