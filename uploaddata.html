@@ -454,53 +454,126 @@
             updateBtn.disabled = true;
 
             try {
-                // Extract the relevant data (assuming first row contains totals)
-                const totalRow = parsedData[0];
+                // Find the "Total: Account" row
+                let totalRow = null;
                 
+                // Method 1: Look for row with "Total: Account" in any column
+                for (let i = 0; i < parsedData.length; i++) {
+                    const row = parsedData[i];
+                    const values = Object.values(row);
+                    if (values.some(value => String(value).includes('Total: Account'))) {
+                        totalRow = row;
+                        break;
+                    }
+                }
+
+                // Method 2: If not found, try the second row (index 1) as fallback
+                if (!totalRow && parsedData.length > 1) {
+                    totalRow = parsedData[1];
+                }
+
+                // Method 3: If still not found, use first row
+                if (!totalRow) {
+                    totalRow = parsedData[0];
+                }
+
+                if (!totalRow) {
+                    throw new Error('No data found in CSV');
+                }
+
+                console.log('Using row:', totalRow);
+
+                // Helper function to safely get numeric value
+                function getNumericValue(value) {
+                    if (value === null || value === undefined || value === '') return 0;
+                    const str = String(value).replace(/[%,$]/g, '');
+                    const num = parseFloat(str);
+                    return isNaN(num) ? 0 : num;
+                }
+
+                // Helper function to find column value by partial name match
+                function findColumnValue(row, searchTerms) {
+                    for (const key of Object.keys(row)) {
+                        for (const term of searchTerms) {
+                            if (key.toLowerCase().includes(term.toLowerCase())) {
+                                return getNumericValue(row[key]);
+                            }
+                        }
+                    }
+                    return 0;
+                }
+
+                // Extract data with flexible column matching
                 const dashboardData = {
-                    dateRange: "Latest Data",
+                    dateRange: "Latest Data Update",
                     impressions: {
-                        current: parseInt(totalRow['Impr.']) || 0,
-                        previous: parseInt(totalRow['Impr. (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Impr. (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Impr.', 'Impressions']) || 
+                                Math.max(getNumericValue(totalRow.B), getNumericValue(totalRow['Impr.'])),
+                        previous: findColumnValue(totalRow, ['Impr. (Compare to)', 'Impressions (Compare to)']) ||
+                                 getNumericValue(totalRow.C),
+                        change: findColumnValue(totalRow, ['Impr. (Change %)', 'Impressions (Change %)']) ||
+                               getNumericValue(totalRow.E)
                     },
                     interactions: {
-                        current: parseInt(totalRow['Interactions']) || 0,
-                        previous: parseInt(totalRow['Interactions (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Interactions (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Interactions']) ||
+                                getNumericValue(totalRow.F),
+                        previous: findColumnValue(totalRow, ['Interactions (Compare to)']) ||
+                                 getNumericValue(totalRow.G),
+                        change: findColumnValue(totalRow, ['Interactions (Change %)']) ||
+                               getNumericValue(totalRow.J)
                     },
                     interactionRate: {
-                        current: parseFloat(totalRow['Interaction rate']?.replace('%', '')) || 0,
-                        previous: parseFloat(totalRow['Interaction rate (Compare to)']?.replace('%', '')) || 0,
-                        change: parseFloat(totalRow['Interaction rate (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Interaction rate']) ||
+                                getNumericValue(totalRow.K),
+                        previous: findColumnValue(totalRow, ['Interaction rate (Compare to)']) ||
+                                 getNumericValue(totalRow.L),
+                        change: findColumnValue(totalRow, ['Interaction rate (Change %)']) ||
+                               getNumericValue(totalRow.M)
                     },
                     avgCost: {
-                        current: parseFloat(totalRow['Avg. cost']) || 0,
-                        previous: parseFloat(totalRow['Avg. cost (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Avg. cost (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Avg. cost']) ||
+                                getNumericValue(totalRow.O),
+                        previous: findColumnValue(totalRow, ['Avg. cost (Compare to)']) ||
+                                 getNumericValue(totalRow.P),
+                        change: findColumnValue(totalRow, ['Avg. cost (Change %)']) ||
+                               getNumericValue(totalRow.S)
                     },
                     totalCost: {
-                        current: parseFloat(totalRow['Cost']) || 0,
-                        previous: parseFloat(totalRow['Cost (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Cost (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Cost']) ||
+                                getNumericValue(totalRow.T),
+                        previous: findColumnValue(totalRow, ['Cost (Compare to)']) ||
+                                 getNumericValue(totalRow.U),
+                        change: findColumnValue(totalRow, ['Cost (Change %)']) ||
+                               getNumericValue(totalRow.W)
                     },
                     conversionRate: {
-                        current: parseFloat(totalRow['Conv. rate']?.replace('%', '')) || 0,
-                        previous: parseFloat(totalRow['Conv. rate (Compare to)']?.replace('%', '')) || 0,
-                        change: parseFloat(totalRow['Conv. rate (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Conv. rate']) ||
+                                getNumericValue(totalRow.X),
+                        previous: findColumnValue(totalRow, ['Conv. rate (Compare to)']) ||
+                                 getNumericValue(totalRow.Y),
+                        change: findColumnValue(totalRow, ['Conv. rate (Change %)']) ||
+                               getNumericValue(totalRow.Z)
                     },
                     conversions: {
-                        current: parseFloat(totalRow['Conversions']) || 0,
-                        previous: parseFloat(totalRow['Conversions (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Conversions (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Conversions']) ||
+                                getNumericValue(totalRow.AA),
+                        previous: findColumnValue(totalRow, ['Conversions (Compare to)']) ||
+                                 getNumericValue(totalRow.AB),
+                        change: findColumnValue(totalRow, ['Conversions (Change %)']) ||
+                               getNumericValue(totalRow.AD)
                     },
                     costPerConversion: {
-                        current: parseFloat(totalRow['Cost / conv.']) || 0,
-                        previous: parseFloat(totalRow['Cost / conv. (Compare to)']) || 0,
-                        change: parseFloat(totalRow['Cost / conv. (Change %)']) || 0
+                        current: findColumnValue(totalRow, ['Cost / conv.']) ||
+                                getNumericValue(totalRow.AE),
+                        previous: findColumnValue(totalRow, ['Cost / conv. (Compare to)']) ||
+                                 getNumericValue(totalRow.AF),
+                        change: findColumnValue(totalRow, ['Cost / conv. (Change %)']) ||
+                               getNumericValue(totalRow.AH)
                     },
                     lastUpdated: new Date().toISOString()
                 };
+
+                console.log('Dashboard data:', dashboardData);
 
                 // Store in localStorage
                 localStorage.setItem('googleAdsData', JSON.stringify(dashboardData));
