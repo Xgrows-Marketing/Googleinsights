@@ -414,21 +414,49 @@
                 let totalRowIndex = -1;
                 let headerRowIndex = -1;
                 
+                // Debug: log all first column values
+                console.log('All first column values:');
+                rawParseResult.data.forEach((row, index) => {
+                    console.log(`Row ${index}: "${String(row[0] || '').trim()}"`);
+                });
+                
                 for (let i = 0; i < rawParseResult.data.length; i++) {
                     const row = rawParseResult.data[i];
-                    const firstCell = String(row[0] || '').trim();
+                    const firstCell = String(row[0] || '').trim().toLowerCase();
                     
                     // Look for header row (contains "Search term" or similar)
-                    if (firstCell.toLowerCase().includes('search term') || 
+                    if (firstCell.includes('search term') || 
                         row.some(cell => String(cell || '').toLowerCase().includes('impr.'))) {
                         headerRowIndex = i;
                     }
                     
-                    // Look for total row
-                    if (firstCell.toLowerCase().includes('total') && 
-                        firstCell.toLowerCase().includes('account')) {
+                    // Look for total row - be more flexible
+                    if ((firstCell.includes('total') && firstCell.includes('account')) ||
+                        firstCell === 'total: account' ||
+                        firstCell.includes('total:') ||
+                        (firstCell.includes('total') && row.length > 5)) { // Row with "total" and multiple columns
                         totalRowIndex = i;
+                        console.log(`Found potential total row at index ${i}: "${row[0]}"`);
                         break;
+                    }
+                }
+                
+                // If still not found, try to find any row that looks like summary data
+                if (totalRowIndex === -1) {
+                    console.log('No "Total" row found, looking for data rows...');
+                    for (let i = 1; i < rawParseResult.data.length; i++) {
+                        const row = rawParseResult.data[i];
+                        // Look for rows with numeric data in multiple columns (likely summary data)
+                        const numericColumns = row.filter(cell => {
+                            const str = String(cell || '').replace(/[,$%]/g, '');
+                            return !isNaN(parseFloat(str)) && parseFloat(str) > 0;
+                        }).length;
+                        
+                        if (numericColumns >= 3) { // At least 3 numeric columns
+                            totalRowIndex = i;
+                            console.log(`Using row ${i} as data row (${numericColumns} numeric columns)`);
+                            break;
+                        }
                     }
                 }
 
