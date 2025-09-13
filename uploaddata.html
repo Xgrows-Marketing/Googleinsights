@@ -410,67 +410,81 @@
 
                 console.log('Raw CSV rows:', rawParseResult.data);
                 
-                // Find the row with "Total: Account" 
+                // Debug: log all rows to understand the structure
+                console.log('CSV Structure Analysis:');
+                rawParseResult.data.forEach((row, index) => {
+                    const firstCell = String(row[0] || '').trim();
+                    const secondCell = String(row[1] || '').trim();
+                    console.log(`Row ${index}: "${firstCell}" | "${secondCell}" | Columns: ${row.length}`);
+                });
+                
+                // Based on the Google Sheets structure, we expect:
+                // Row 0: Date range info
+                // Row 1: Headers starting with "Search term"
+                // Row 2: "Total: Account" with data
+                
                 let totalRowIndex = -1;
                 let headerRowIndex = -1;
                 
-                // Debug: log all first column values
-                console.log('All first column values:');
-                rawParseResult.data.forEach((row, index) => {
-                    console.log(`Row ${index}: "${String(row[0] || '').trim()}"`);
-                });
-                
+                // Look for the specific pattern in your sheets
                 for (let i = 0; i < rawParseResult.data.length; i++) {
                     const row = rawParseResult.data[i];
-                    const firstCell = String(row[0] || '').trim().toLowerCase();
+                    const firstCell = String(row[0] || '').trim();
                     
-                    // Look for header row (contains "Search term" or similar)
-                    if (firstCell.includes('search term') || 
-                        row.some(cell => String(cell || '').toLowerCase().includes('impr.'))) {
+                    // Look for header row (row with "Search term")
+                    if (firstCell.toLowerCase() === 'search term') {
                         headerRowIndex = i;
+                        console.log(`Found header row at index ${i}`);
                     }
                     
-                    // Look for total row - be more flexible
-                    if ((firstCell.includes('total') && firstCell.includes('account')) ||
-                        firstCell === 'total: account' ||
-                        firstCell.includes('total:') ||
-                        (firstCell.includes('total') && row.length > 5)) { // Row with "total" and multiple columns
+                    // Look for total row (row with "Total: Account")
+                    if (firstCell.toLowerCase().includes('total') && 
+                        (firstCell.toLowerCase().includes('account') || firstCell.includes(':'))) {
                         totalRowIndex = i;
-                        console.log(`Found potential total row at index ${i}: "${row[0]}"`);
-                        break;
+                        console.log(`Found total row at index ${i}: "${firstCell}"`);
                     }
                 }
                 
-                // If still not found, try to find any row that looks like summary data
-                if (totalRowIndex === -1) {
-                    console.log('No "Total" row found, looking for data rows...');
-                    for (let i = 1; i < rawParseResult.data.length; i++) {
-                        const row = rawParseResult.data[i];
-                        // Look for rows with numeric data in multiple columns (likely summary data)
-                        const numericColumns = row.filter(cell => {
-                            const str = String(cell || '').replace(/[,$%]/g, '');
-                            return !isNaN(parseFloat(str)) && parseFloat(str) > 0;
-                        }).length;
-                        
-                        if (numericColumns >= 3) { // At least 3 numeric columns
-                            totalRowIndex = i;
-                            console.log(`Using row ${i} as data row (${numericColumns} numeric columns)`);
-                            break;
-                        }
+                // Fallback: if header not found but we have data, assume row 1 is headers
+                if (headerRowIndex === -1 && rawParseResult.data.length > 2) {
+                    // Check if row 1 has column-like headers
+                    const potentialHeaders = rawParseResult.data[1];
+                    if (potentialHeaders && potentialHeaders.some(cell => 
+                        String(cell || '').toLowerCase().includes('impr') ||
+                        String(cell || '').toLowerCase().includes('interaction') ||
+                        String(cell || '').toLowerCase().includes('cost')
+                    )) {
+                        headerRowIndex = 1;
+                        console.log('Using row 1 as headers (fallback)');
                     }
                 }
-
-                console.log('Header row index:', headerRowIndex);
-                console.log('Total row index:', totalRowIndex);
+                
+                // Fallback: if total row not found but we have data, use row 2
+                if (totalRowIndex === -1 && rawParseResult.data.length > 2) {
+                    // Check if row 2 has numeric data
+                    const potentialDataRow = rawParseResult.data[2];
+                    if (potentialDataRow && potentialDataRow.some(cell => {
+                        const str = String(cell || '').replace(/[,$%]/g, '');
+                        return !isNaN(parseFloat(str)) && parseFloat(str) > 0;
+                    })) {
+                        totalRowIndex = 2;
+                        console.log('Using row 2 as data row (fallback)');
+                    }
+                }
+                
+                console.log(`Final selection - Header row: ${headerRowIndex}, Data row: ${totalRowIndex}`);
 
                 if (totalRowIndex === -1) {
-                    throw new Error('Could not find "Total: Account" row in the data');
+                    throw new Error(`Could not find data row. Available rows: ${rawParseResult.data.length}. Please check that your sheet contains the expected Google Ads data structure.`);
                 }
 
-                // Use the header row if found, otherwise use row 0
-                const actualHeaderRowIndex = headerRowIndex !== -1 ? headerRowIndex : 0;
+                if (headerRowIndex === -1) {
+                    throw new Error(`Could not find header row. Please check that your sheet has proper column headers.`);
+                }
+
+                const actualHeaderRowIndex = headerRowIndex;
                 const headers = rawParseResult.data[actualHeaderRowIndex];
-                const totalRowData = rawParseResult.data[totalRowIndex];
+                const totalRowData = rawParseResult.data[dataRowIndex];
 
                 // Create an object with headers as keys and total row data as values
                 const totalRowObject = {};
