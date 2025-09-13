@@ -250,6 +250,16 @@
             color: #4ade80;
         }
 
+        .debug-info {
+            background: rgba(255, 165, 0, 0.1);
+            border: 1px solid rgba(255, 165, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #fbbf24;
+        }
+
         @media (max-width: 768px) {
             body {
                 padding: 15px;
@@ -317,6 +327,7 @@
             </form>
 
             <div id="statusMessage" class="status-message"></div>
+            <div id="debugInfo" class="debug-info" style="display: none;"></div>
         </div>
 
         <div id="previewCard" class="preview-card">
@@ -331,6 +342,7 @@
 
     <script>
         let parsedData = null;
+        let rawCsvData = null;
 
         const csvUrlInput = document.getElementById('csvUrl');
         const previewBtn = document.getElementById('previewBtn');
@@ -339,6 +351,7 @@
         const previewCard = document.getElementById('previewCard');
         const previewContent = document.getElementById('previewContent');
         const uploadForm = document.getElementById('uploadForm');
+        const debugInfo = document.getElementById('debugInfo');
 
         // Show status message
         function showStatus(message, type) {
@@ -350,6 +363,12 @@
         // Hide status message
         function hideStatus() {
             statusMessage.style.display = 'none';
+        }
+
+        // Show debug info
+        function showDebug(message) {
+            debugInfo.innerHTML = message;
+            debugInfo.style.display = 'block';
         }
 
         // Preview data function
@@ -381,23 +400,73 @@
                 
                 const data = await response.json();
                 const csvText = data.contents;
+                rawCsvData = csvText;
 
-                // Parse CSV
-                const parseResult = Papa.parse(csvText, {
-                    header: true,
-                    skipEmptyLines: true,
-                    dynamicTyping: true
+                // Parse CSV without headers first to see raw structure
+                const rawParseResult = Papa.parse(csvText, {
+                    header: false,
+                    skipEmptyLines: true
                 });
 
-                if (parseResult.errors.length > 0) {
-                    throw new Error('CSV parsing errors: ' + parseResult.errors.map(e => e.message).join(', '));
+                console.log('Raw CSV rows:', rawParseResult.data);
+                
+                // Find the row with "Total: Account" 
+                let totalRowIndex = -1;
+                let headerRowIndex = -1;
+                
+                for (let i = 0; i < rawParseResult.data.length; i++) {
+                    const row = rawParseResult.data[i];
+                    const firstCell = String(row[0] || '').trim();
+                    
+                    // Look for header row (contains "Search term" or similar)
+                    if (firstCell.toLowerCase().includes('search term') || 
+                        row.some(cell => String(cell || '').toLowerCase().includes('impr.'))) {
+                        headerRowIndex = i;
+                    }
+                    
+                    // Look for total row
+                    if (firstCell.toLowerCase().includes('total') && 
+                        firstCell.toLowerCase().includes('account')) {
+                        totalRowIndex = i;
+                        break;
+                    }
                 }
 
-                parsedData = parseResult.data;
+                console.log('Header row index:', headerRowIndex);
+                console.log('Total row index:', totalRowIndex);
+
+                if (totalRowIndex === -1) {
+                    throw new Error('Could not find "Total: Account" row in the data');
+                }
+
+                // Use the header row if found, otherwise use row 0
+                const actualHeaderRowIndex = headerRowIndex !== -1 ? headerRowIndex : 0;
+                const headers = rawParseResult.data[actualHeaderRowIndex];
+                const totalRowData = rawParseResult.data[totalRowIndex];
+
+                // Create an object with headers as keys and total row data as values
+                const totalRowObject = {};
+                headers.forEach((header, index) => {
+                    totalRowObject[header] = totalRowData[index] || '';
+                });
+
+                parsedData = [totalRowObject]; // Wrap in array for consistency
+                
+                console.log('Processed total row:', totalRowObject);
+                
+                // Show debug info
+                showDebug(`
+                    <strong>Debug Info:</strong><br>
+                    • Found ${rawParseResult.data.length} total rows<br>
+                    • Header row at index: ${actualHeaderRowIndex}<br>
+                    • Total row at index: ${totalRowIndex}<br>
+                    • Headers found: ${headers.length}<br>
+                    • Sample header: "${headers[1] || 'N/A'}"
+                `);
                 
                 // Show preview
-                displayPreview(parsedData);
-                showStatus(`Successfully loaded ${parsedData.length} rows of data`, 'success');
+                displayPreview([totalRowObject]);
+                showStatus(`Successfully loaded Total Account data from row ${totalRowIndex + 1}`, 'success');
                 updateBtn.disabled = false;
 
             } catch (error) {
@@ -418,28 +487,21 @@
                 return;
             }
 
-            // Show only first few rows for preview
-            const previewRows = data.slice(0, 5);
-            const headers = Object.keys(previewRows[0]);
+            const row = data[0];
+            const headers = Object.keys(row);
 
             let html = '<table class="preview-table"><thead><tr>';
             headers.forEach(header => {
                 html += `<th>${header}</th>`;
             });
-            html += '</tr></thead><tbody>';
+            html += '</tr></thead><tbody><tr>';
 
-            previewRows.forEach(row => {
-                html += '<tr>';
-                headers.forEach(header => {
-                    html += `<td>${row[header] || ''}</td>`;
-                });
-                html += '</tr>';
+            headers.forEach(header => {
+                html += `<td>${row[header] || ''}</td>`;
             });
-            html += '</tbody></table>';
+            html += '</tr></tbody></table>';
 
-            if (data.length > 5) {
-                html += `<p style="margin-top: 10px; color: #9ca3af; text-align: center;">... and ${data.length - 5} more rows</p>`;
-            }
+            html += `<p style="margin-top: 10px; color: #9ca3af; text-align: center;">Showing Total: Account row data</p>`;
 
             previewContent.innerHTML = html;
             previewCard.style.display = 'block';
@@ -447,7 +509,7 @@
 
         // Update dashboard function
         function updateDashboard() {
-            if (!parsedData) {
+            if (!parsedData || !parsedData[0]) {
                 showStatus('Please preview the data first', 'error');
                 return;
             }
@@ -456,34 +518,8 @@
             updateBtn.disabled = true;
 
             try {
-                // Find the "Total: Account" row
-                let totalRow = null;
-                
-                // Method 1: Look for row with "Total: Account" in any column
-                for (let i = 0; i < parsedData.length; i++) {
-                    const row = parsedData[i];
-                    const values = Object.values(row);
-                    if (values.some(value => String(value).includes('Total: Account'))) {
-                        totalRow = row;
-                        break;
-                    }
-                }
-
-                // Method 2: If not found, try the second row (index 1) as fallback
-                if (!totalRow && parsedData.length > 1) {
-                    totalRow = parsedData[1];
-                }
-
-                // Method 3: If still not found, use first row
-                if (!totalRow) {
-                    totalRow = parsedData[0];
-                }
-
-                if (!totalRow) {
-                    throw new Error('No data found in CSV');
-                }
-
-                console.log('Using row:', totalRow);
+                const totalRow = parsedData[0];
+                console.log('Processing row:', totalRow);
 
                 // Helper function to safely get numeric value
                 function getNumericValue(value) {
@@ -498,10 +534,13 @@
                     for (const key of Object.keys(row)) {
                         for (const term of searchTerms) {
                             if (key.toLowerCase().includes(term.toLowerCase())) {
-                                return getNumericValue(row[key]);
+                                const value = getNumericValue(row[key]);
+                                console.log(`Found ${term} in column "${key}": ${value}`);
+                                return value;
                             }
                         }
                     }
+                    console.log(`Could not find column for terms: ${searchTerms.join(', ')}`);
                     return 0;
                 }
 
@@ -509,83 +548,76 @@
                 const dashboardData = {
                     dateRange: "Latest Data Update",
                     impressions: {
-                        current: findColumnValue(totalRow, ['Impr.', 'Impressions']) || 
-                                Math.max(getNumericValue(totalRow.B), getNumericValue(totalRow['Impr.'])),
-                        previous: findColumnValue(totalRow, ['Impr. (Compare to)', 'Impressions (Compare to)']) ||
-                                 getNumericValue(totalRow.C),
-                        change: findColumnValue(totalRow, ['Impr. (Change %)', 'Impressions (Change %)']) ||
-                               getNumericValue(totalRow.E)
+                        current: findColumnValue(totalRow, ['impr.', 'impressions']),
+                        previous: findColumnValue(totalRow, ['impr. (compare to)', 'impressions (compare to)']),
+                        change: findColumnValue(totalRow, ['impr. (change', 'impressions (change'])
                     },
                     interactions: {
-                        current: findColumnValue(totalRow, ['Interactions']) ||
-                                getNumericValue(totalRow.F),
-                        previous: findColumnValue(totalRow, ['Interactions (Compare to)']) ||
-                                 getNumericValue(totalRow.G),
-                        change: findColumnValue(totalRow, ['Interactions (Change %)']) ||
-                               getNumericValue(totalRow.J)
+                        current: findColumnValue(totalRow, ['interactions']) || 
+                               findColumnValue(totalRow, ['clicks']),
+                        previous: findColumnValue(totalRow, ['interactions (compare to)', 'clicks (compare to)']),
+                        change: findColumnValue(totalRow, ['interactions (change', 'clicks (change'])
                     },
                     interactionRate: {
-                        current: findColumnValue(totalRow, ['Interaction rate']) ||
-                                getNumericValue(totalRow.K),
-                        previous: findColumnValue(totalRow, ['Interaction rate (Compare to)']) ||
-                                 getNumericValue(totalRow.L),
-                        change: findColumnValue(totalRow, ['Interaction rate (Change %)']) ||
-                               getNumericValue(totalRow.M)
+                        current: findColumnValue(totalRow, ['interaction rate', 'ctr']),
+                        previous: findColumnValue(totalRow, ['interaction rate (compare', 'ctr (compare']),
+                        change: findColumnValue(totalRow, ['interaction rate (change', 'ctr (change'])
                     },
                     avgCost: {
-                        current: findColumnValue(totalRow, ['Avg. cost']) ||
-                                getNumericValue(totalRow.O),
-                        previous: findColumnValue(totalRow, ['Avg. cost (Compare to)']) ||
-                                 getNumericValue(totalRow.P),
-                        change: findColumnValue(totalRow, ['Avg. cost (Change %)']) ||
-                               getNumericValue(totalRow.S)
+                        current: findColumnValue(totalRow, ['avg. cost', 'avg cost']),
+                        previous: findColumnValue(totalRow, ['avg. cost (compare', 'avg cost (compare']),
+                        change: findColumnValue(totalRow, ['avg. cost (change', 'avg cost (change'])
                     },
                     totalCost: {
-                        current: findColumnValue(totalRow, ['Cost']) ||
-                                getNumericValue(totalRow.T),
-                        previous: findColumnValue(totalRow, ['Cost (Compare to)']) ||
-                                 getNumericValue(totalRow.U),
-                        change: findColumnValue(totalRow, ['Cost (Change %)']) ||
-                               getNumericValue(totalRow.W)
+                        current: findColumnValue(totalRow, ['cost']) || 
+                               findColumnValue(totalRow, ['spend']),
+                        previous: findColumnValue(totalRow, ['cost (compare', 'spend (compare']),
+                        change: findColumnValue(totalRow, ['cost (change', 'spend (change'])
                     },
                     conversionRate: {
-                        current: findColumnValue(totalRow, ['Conv. rate']) ||
-                                getNumericValue(totalRow.X),
-                        previous: findColumnValue(totalRow, ['Conv. rate (Compare to)']) ||
-                                 getNumericValue(totalRow.Y),
-                        change: findColumnValue(totalRow, ['Conv. rate (Change %)']) ||
-                               getNumericValue(totalRow.Z)
+                        current: findColumnValue(totalRow, ['conv. rate', 'conversion rate']),
+                        previous: findColumnValue(totalRow, ['conv. rate (compare', 'conversion rate (compare']),
+                        change: findColumnValue(totalRow, ['conv. rate (change', 'conversion rate (change'])
                     },
                     conversions: {
-                        current: findColumnValue(totalRow, ['Conversions']) ||
-                                getNumericValue(totalRow.AA),
-                        previous: findColumnValue(totalRow, ['Conversions (Compare to)']) ||
-                                 getNumericValue(totalRow.AB),
-                        change: findColumnValue(totalRow, ['Conversions (Change %)']) ||
-                               getNumericValue(totalRow.AD)
+                        current: findColumnValue(totalRow, ['conversions']),
+                        previous: findColumnValue(totalRow, ['conversions (compare']),
+                        change: findColumnValue(totalRow, ['conversions (change'])
                     },
                     costPerConversion: {
-                        current: findColumnValue(totalRow, ['Cost / conv.']) ||
-                                getNumericValue(totalRow.AE),
-                        previous: findColumnValue(totalRow, ['Cost / conv. (Compare to)']) ||
-                                 getNumericValue(totalRow.AF),
-                        change: findColumnValue(totalRow, ['Cost / conv. (Change %)']) ||
-                               getNumericValue(totalRow.AH)
+                        current: findColumnValue(totalRow, ['cost / conv', 'cost per conv']),
+                        previous: findColumnValue(totalRow, ['cost / conv (compare', 'cost per conv (compare']),
+                        change: findColumnValue(totalRow, ['cost / conv (change', 'cost per conv (change'])
                     },
                     lastUpdated: new Date().toISOString()
                 };
 
-                console.log('Dashboard data:', dashboardData);
+                console.log('Final dashboard data:', dashboardData);
 
-                // Store in localStorage
-                localStorage.setItem('googleAdsData', JSON.stringify(dashboardData));
-                
-                showStatus('Dashboard updated successfully! 🎉', 'success');
-                
-                // Redirect to dashboard after 2 seconds
-                setTimeout(() => {
-                    window.location.href = 'index.html';
-                }, 2000);
+                // Validate that we got some data
+                const hasData = Object.values(dashboardData).some(metric => {
+                    if (typeof metric === 'object' && metric.current !== undefined) {
+                        return metric.current > 0;
+                    }
+                    return false;
+                });
+
+                if (!hasData) {
+                    throw new Error('No valid data found. Please check that your CSV contains the expected Google Ads columns.');
+                }
+
+                // Store data
+                if (typeof Storage !== "undefined") {
+                    localStorage.setItem('googleAdsData', JSON.stringify(dashboardData));
+                    showStatus('Dashboard updated successfully! 🎉', 'success');
+                    
+                    // Redirect to dashboard after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 2000);
+                } else {
+                    throw new Error('Browser storage not supported');
+                }
 
             } catch (error) {
                 console.error('Error updating dashboard:', error);
